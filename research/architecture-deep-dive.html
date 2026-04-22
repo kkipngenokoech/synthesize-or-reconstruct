@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Architecture Deep Dive — To Synthesize or to Reconstruct?</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #0a0f1e;
+    color: #e8ecf0;
+  }
+
+  .slide {
+    width: 100%;
+    min-height: 100vh;
+    padding: 56px 72px;
+    display: flex;
+    flex-direction: column;
+    border-bottom: 2px solid #1e2a40;
+    page-break-after: always;
+  }
+
+  .slide-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #00b4a0;
+    margin-bottom: 8px;
+  }
+
+  h1 {
+    font-size: 40px;
+    font-weight: 800;
+    color: #ffffff;
+    margin-bottom: 36px;
+    line-height: 1.15;
+  }
+
+  h1 span {
+    color: #00b4a0;
+  }
+
+  .grid-3 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    flex: 1;
+  }
+
+  .grid-2 {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 24px;
+    flex: 1;
+  }
+
+  .card {
+    background: #111827;
+    border-radius: 10px;
+    padding: 22px 24px;
+    border-top: 3px solid #00b4a0;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .card.pipeline-b {
+    border-top-color: #7c3aed;
+  }
+
+  .card-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: #ffffff;
+  }
+
+  .tag {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: #00b4a020;
+    color: #00b4a0;
+    margin-bottom: 2px;
+  }
+
+  .tag.purple {
+    background: #7c3aed20;
+    color: #a78bfa;
+  }
+
+  .tag.orange {
+    background: #f9731620;
+    color: #fb923c;
+  }
+
+  .problem-line {
+    font-size: 12px;
+    color: #94a3b8;
+    line-height: 1.5;
+    border-left: 2px solid #1e2a40;
+    padding-left: 10px;
+    font-style: italic;
+  }
+
+  .section-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: #00b4a0;
+    margin-top: 4px;
+    margin-bottom: 4px;
+  }
+
+  .section-label.purple { color: #a78bfa; }
+  .section-label.orange { color: #fb923c; }
+
+  ul {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  li {
+    font-size: 12.5px;
+    color: #cbd5e1;
+    padding-left: 14px;
+    position: relative;
+    line-height: 1.5;
+  }
+
+  li::before {
+    content: '→';
+    position: absolute;
+    left: 0;
+    color: #475569;
+    font-size: 11px;
+  }
+
+  code {
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 11px;
+    background: #1e293b;
+    color: #7dd3fc;
+    padding: 2px 5px;
+    border-radius: 3px;
+  }
+
+  .code-block {
+    background: #0f172a;
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-family: 'JetBrains Mono', 'Fira Code', monospace;
+    font-size: 11px;
+    color: #7dd3fc;
+    line-height: 1.7;
+    border-left: 2px solid #334155;
+    margin-top: 2px;
+  }
+
+  .code-block .comment { color: #475569; }
+  .code-block .keyword { color: #c084fc; }
+  .code-block .string  { color: #86efac; }
+  .code-block .number  { color: #fb923c; }
+
+  .footer-note {
+    margin-top: 28px;
+    padding: 14px 20px;
+    background: #0f172a;
+    border-radius: 8px;
+    border: 1px solid #1e2a40;
+    font-size: 12px;
+    color: #94a3b8;
+    font-style: italic;
+    text-align: center;
+  }
+
+  .footer-note strong { color: #e2e8f0; font-style: normal; }
+
+  /* Slide 3 specific */
+  .compare-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    margin-bottom: 20px;
+  }
+
+  .compare-card {
+    background: #111827;
+    border-radius: 10px;
+    padding: 22px 24px;
+    border-top: 3px solid #00b4a0;
+  }
+
+  .compare-card.right {
+    border-top-color: #7c3aed;
+  }
+
+  .compare-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: #ffffff;
+    margin-bottom: 12px;
+  }
+
+  .shared-box {
+    background: #111827;
+    border-radius: 10px;
+    padding: 18px 24px;
+    border: 1px solid #1e3a5f;
+    margin-bottom: 20px;
+  }
+
+  .shared-title {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: #60a5fa;
+    margin-bottom: 10px;
+  }
+
+  .shared-items {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .chip {
+    background: #1e3a5f;
+    color: #93c5fd;
+    font-size: 11.5px;
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-weight: 500;
+  }
+
+  .research-q {
+    background: #0f172a;
+    border: 1px solid #1e3a5f;
+    border-radius: 8px;
+    padding: 16px 22px;
+    font-size: 13px;
+    color: #e2e8f0;
+    line-height: 1.6;
+    text-align: center;
+  }
+
+  .research-q strong { color: #60a5fa; }
+
+  /* Nav dots */
+  .nav {
+    position: fixed;
+    right: 28px;
+    top: 50%;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #334155;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+
+  .dot:hover, .dot.active { background: #00b4a0; }
+
+  .cmu-tag {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #475569;
+    margin-bottom: 4px;
+  }
+</style>
+</head>
+<body>
+
+<!-- ─── SLIDE 1: Pipeline A ─────────────────────────────────────────── -->
+<section class="slide" id="slide1">
+  <div class="cmu-tag">Carnegie Mellon University · Group 20</div>
+  <div class="slide-label">Slide 1 of 3 · Pipeline A</div>
+  <h1>Generative Augmentation <span>Architectures</span></h1>
+
+  <div class="grid-3">
+
+    <!-- R-GAN -->
+    <div class="card">
+      <div>
+        <div class="tag">R-GAN</div>
+        <div class="card-title">Regularized + Spectral Norm</div>
+      </div>
+      <p class="problem-line">492 fraud samples is too few. R-GAN synthesizes more to balance LightGBM training.</p>
+
+      <div>
+        <div class="section-label">Key architectural choices</div>
+        <ul>
+          <li><code>spectral_norm</code> wraps every <code>nn.Linear</code> — constrains the discriminator's Lipschitz constant, preventing training collapse on tabular data</li>
+          <li>Generator: <code>128→256→512→256→50</code> — expands into richer space then compresses to feature space</li>
+          <li>No <code>BatchNorm</code> in discriminator — required by WGAN-GP gradient penalty math</li>
+          <li><code>n_critic=5</code> — discriminator runs 5 steps per generator step</li>
+        </ul>
+      </div>
+
+      <div>
+        <div class="section-label orange">Fraud-specific design</div>
+        <ul>
+          <li><code>lambda_sim=0.5</code>: Similarity Measure Loss penalizes generator if synthetic fraud doesn't match real fraud mean &amp; std — directly targets minority-class quality</li>
+        </ul>
+      </div>
+
+      <div class="code-block">
+<span class="comment"># rgan.ipynb — Cell 10</span>
+<span class="keyword">def</span> spectral_norm(module):
+    <span class="keyword">return</span> nn.utils.spectral_norm(module)
+
+self.net = nn.Sequential(
+    spectral_norm(nn.Linear(<span class="number">128</span>, <span class="number">256</span>)),
+    nn.BatchNorm1d(<span class="number">256</span>), nn.CELU(),
+    spectral_norm(nn.Linear(<span class="number">256</span>, <span class="number">512</span>)),
+    <span class="comment">...</span>
+)</div>
+    </div>
+
+    <!-- T-GAN -->
+    <div class="card">
+      <div>
+        <div class="tag">T-GAN</div>
+        <div class="card-title">Transformer Generator</div>
+      </div>
+      <p class="problem-line">Can self-attention capture the complex correlations between 51 PCA features better than MLP?</p>
+
+      <div>
+        <div class="section-label">Key architectural choices</div>
+        <ul>
+          <li>Noise vector <code>z</code> projected to <code>8 × 256</code> tokens — tabular features treated as a sequence so attention can relate them to each other</li>
+          <li><code>nhead=8</code> in generator, <code>nhead=4</code> in discriminator — shallower discriminator prevents it from overpowering generator</li>
+          <li>4 Transformer encoder layers in generator, 2 in discriminator</li>
+        </ul>
+      </div>
+
+      <div>
+        <div class="section-label orange">Implementation constraint</div>
+        <ul>
+          <li>Flash attention disabled (<code>enable_flash_sdp(False)</code>) — flash kernels don't implement the backward pass needed for WGAN-GP gradient penalty on this PyTorch build</li>
+        </ul>
+      </div>
+
+      <div class="code-block">
+<span class="comment"># tgan.ipynb — Cell 16</span>
+self.input_proj = nn.Linear(
+    cfg.latent_dim,
+    cfg.seq_len * cfg.d_model  <span class="comment"># 8×256</span>
+)
+x = self.input_proj(z).view(
+    -<span class="number">1</span>, self.seq_len, self.d_model
+)
+x = self.transformer(x)  <span class="comment"># 4-layer encoder</span></div>
+    </div>
+
+    <!-- CTGAN -->
+    <div class="card">
+      <div>
+        <div class="tag">CTGAN</div>
+        <div class="card-title">Tabular, VGM-Conditioned</div>
+      </div>
+      <p class="problem-line">Amount has a skewed, multi-modal distribution — standard GANs fail here. VGM conditioning solves it.</p>
+
+      <div>
+        <div class="section-label">Key architectural choices</div>
+        <ul>
+          <li>Variational Gaussian Mixture pre-processes continuous columns into mixture components; the mode is passed as a conditional vector to the generator</li>
+          <li><code>pac=10</code> — PAC-GAN groups 10 samples per discriminator forward pass for tabular stability</li>
+          <li><code>n_epochs=800</code> vs R-GAN's 300 — more epochs needed to fit the conditional distribution</li>
+        </ul>
+      </div>
+
+      <div>
+        <div class="section-label orange">Library vs from-scratch</div>
+        <ul>
+          <li>Uses <code>sdv-ctgan</code> library — VGM is an internal preprocessing component. Configuration is declarative rather than architectural</li>
+        </ul>
+      </div>
+
+      <div class="code-block">
+<span class="comment"># ctgan.ipynb — Cell 5</span>
+cfg.embedding_dim = <span class="number">128</span>
+cfg.generator_dim = (<span class="number">256</span>, <span class="number">256</span>)
+cfg.discriminator_dim = (<span class="number">256</span>, <span class="number">256</span>)
+cfg.pac = <span class="number">10</span>       <span class="comment"># PAC-GAN grouping</span>
+cfg.n_epochs = <span class="number">800</span> <span class="comment"># conditional fit</span></div>
+    </div>
+
+  </div><!-- /grid-3 -->
+
+  <div class="footer-note">
+    All three models feed synthetic fraud samples into a downstream <strong>LightGBM classifier</strong> trained on 250,170 records. The GAN's job is purely augmentation — LightGBM does the final classification.
+  </div>
+</section>
+
+
+<!-- ─── SLIDE 2: Pipeline B ─────────────────────────────────────────── -->
+<section class="slide" id="slide2">
+  <div class="cmu-tag">Carnegie Mellon University · Group 20</div>
+  <div class="slide-label">Slide 2 of 3 · Pipeline B</div>
+  <h1>Reconstruction-Based <span>Detection Architectures</span></h1>
+
+  <div class="grid-3">
+
+    <!-- GANomaly -->
+    <div class="card pipeline-b">
+      <div>
+        <div class="tag purple">GANomaly</div>
+        <div class="card-title">Dual Encoder-Decoder</div>
+      </div>
+      <p class="problem-line">Train only on normal transactions. Fraud = whatever doesn't compress and reconstruct consistently.</p>
+
+      <div>
+        <div class="section-label purple">Key architectural choices</div>
+        <ul>
+          <li>Three modules: <code>Encoder₁ → Decoder → Encoder₂</code>. Anomaly score = <code>‖z − ẑ‖₂</code> — the gap between the two latent codes</li>
+          <li>All three trained jointly under one optimizer: <code>Adam(E1 + D + E2 params)</code></li>
+          <li>Loss weights: <code>w_con=50, w_adv=1, w_enc=1</code> — reconstruction dominates; GAN is a regularizer</li>
+        </ul>
+      </div>
+
+      <div>
+        <div class="section-label orange">Threshold (no fraud labels)</div>
+        <ul>
+          <li>95th percentile of validation <em>normal</em> scores — completely unsupervised, no peeking at the 492 fraud labels</li>
+        </ul>
+      </div>
+
+      <div class="code-block">
+<span class="comment"># ganomaly.ipynb — Cell 10</span>
+opt_gen = Adam(
+    list(encoder_1.parameters()) +
+    list(decoder.parameters())   +
+    list(encoder_2.parameters())
+)
+<span class="comment"># anomaly score at inference:</span>
+score = ‖encoder_1(x) − encoder_2(x̂)‖₂</div>
+    </div>
+
+    <!-- Skip-GANomaly -->
+    <div class="card pipeline-b">
+      <div>
+        <div class="tag purple">Skip-GANomaly</div>
+        <div class="card-title">+ U-Net Skip Connections</div>
+      </div>
+      <p class="problem-line">Fraud may differ only in 2-3 subtle features — a bottleneck of 32 dims can wash that out. Skip connections preserve it.</p>
+
+      <div>
+        <div class="section-label purple">Key architectural choices</div>
+        <ul>
+          <li>Encoder saves intermediate activations at every layer; decoder receives them as residual additions — U-Net pattern on tabular data</li>
+          <li>4-level encoder: <code>29→256→128→64→32</code>; decoder mirrors it in reverse</li>
+          <li>Anomaly score blends two signals: <code>0.9 × reconstruction + 0.1 × discriminator feature mismatch</code></li>
+        </ul>
+      </div>
+
+      <div>
+        <div class="section-label orange">Why this matters for fraud</div>
+        <ul>
+          <li>Skip connections let the decoder directly reference pre-bottleneck activations — subtle feature-level anomalies survive the latent compression</li>
+        </ul>
+      </div>
+
+      <div class="code-block">
+<span class="comment"># skip-ganomaly.ipynb — Cell 15</span>
+<span class="keyword">def</span> forward(self, x):
+    skip_outputs, h = [], x
+    <span class="keyword">for</span> layer <span class="keyword">in</span> self.layers:
+        h = layer(h)
+        skip_outputs.append(h)
+    <span class="keyword">return</span> h, skip_outputs  <span class="comment"># pass skips</span>
+
+z, skips = encoder(x_real)
+x_recon  = decoder(z, skips)</div>
+    </div>
+
+    <!-- f-AnoGAN -->
+    <div class="card pipeline-b">
+      <div>
+        <div class="tag purple">f-AnoGAN</div>
+        <div class="card-title">Fast Encoder Inference</div>
+      </div>
+      <p class="problem-line">Standard AnoGAN requires iterative gradient optimization per sample at inference — too slow for real-time fraud scoring.</p>
+
+      <div>
+        <div class="section-label purple">Two-phase training</div>
+        <ul>
+          <li><strong>Phase 1 (100 epochs):</strong> Train WGAN-GP Generator + Discriminator on normal transactions</li>
+          <li><strong>Phase 2 (50 epochs):</strong> Freeze G &amp; D. Train a separate Encoder to map any input directly into the GAN's latent space</li>
+        </ul>
+      </div>
+
+      <div>
+        <div class="section-label orange">Encoder loss (Phase 2)</div>
+        <ul>
+          <li><code>enc_loss = loss_rec + κ × loss_feat</code> — matches both pixel-level reconstruction and discriminator's internal feature representations</li>
+          <li>Anomaly score uses <strong>z-score normalization</strong> (not MinMax) — more robust to extreme outlier scores</li>
+        </ul>
+      </div>
+
+      <div class="code-block">
+<span class="comment"># fanogan.ipynb — Cell 11 (Phase 2)</span>
+z_hat = E(x_real)        <span class="comment"># single forward pass</span>
+x_hat = G(z_hat)
+loss_rec  = MSE(x_hat, x_real)
+loss_feat = MSE(D(x_hat).feat,
+               D(x_real).feat)
+enc_loss = loss_rec + κ * loss_feat</div>
+    </div>
+
+  </div><!-- /grid-3 -->
+
+  <div class="footer-note">
+    Pipeline B models are <strong>semi-supervised</strong> — trained exclusively on 284,315 normal transactions, no fraud labels used. Fraud is an emergent signal at inference, not a training target.
+  </div>
+</section>
+
+
+<!-- ─── SLIDE 3: Connecting Thread ──────────────────────────────────── -->
+<section class="slide" id="slide3">
+  <div class="cmu-tag">Carnegie Mellon University · Group 20</div>
+  <div class="slide-label">Slide 3 of 3 · Synthesis</div>
+  <h1>How Architecture Choices <span>Address the Core Problem</span></h1>
+
+  <div class="shared-box">
+    <div class="shared-title">Shared design decisions across all 6 models</div>
+    <div class="shared-items">
+      <span class="chip">29–51 features (V1-V28 + Amount, Time excluded)</span>
+      <span class="chip">WGAN-GP gradient penalty for training stability</span>
+      <span class="chip">No Tanh on output — real features are unbounded</span>
+      <span class="chip">No BatchNorm in critic — required by WGAN-GP math</span>
+      <span class="chip">Holdout evaluated at natural 0.172% fraud rate</span>
+      <span class="chip">Threshold from validation normals only</span>
+    </div>
+  </div>
+
+  <div class="compare-row">
+    <div class="compare-card">
+      <div class="compare-title" style="color:#00b4a0">Pipeline A — What each architecture adds</div>
+      <ul style="gap:10px">
+        <li><strong style="color:#e2e8f0">R-GAN:</strong> Spectral norm stabilizes training + Similarity Loss ensures synthetic fraud is statistically close to real fraud — addresses <em>quality</em> of augmentation</li>
+        <li><strong style="color:#e2e8f0">T-GAN:</strong> Self-attention over feature tokens captures multivariate correlations — addresses <em>realism</em> of generated distributions</li>
+        <li><strong style="color:#e2e8f0">CTGAN:</strong> VGM conditioning handles multi-modal Amount distribution — addresses <em>feature heterogeneity</em> in tabular data</li>
+      </ul>
+    </div>
+    <div class="compare-card right">
+      <div class="compare-title" style="color:#a78bfa">Pipeline B — What each architecture adds</div>
+      <ul style="gap:10px">
+        <li><strong style="color:#e2e8f0">GANomaly:</strong> Second encoder creates an anomaly score from latent space inconsistency — fraud <em>cannot be consistently re-mapped</em></li>
+        <li><strong style="color:#e2e8f0">Skip-GANomaly:</strong> U-Net skip connections preserve subtle feature deviations that the bottleneck would otherwise erase — catches <em>low-magnitude anomalies</em></li>
+        <li><strong style="color:#e2e8f0">f-AnoGAN:</strong> Pre-trained encoder replaces iterative optimization — makes anomaly scoring <em>viable in production</em> (single forward pass)</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="research-q">
+    <strong>Research Question:</strong> Does generative data augmentation achieve statistically significant higher F1 than reconstruction-based anomaly detection on the same imbalanced fraud dataset?<br/>
+    <span style="color:#64748b; font-size:12px; margin-top:6px; display:block">Both pipelines evaluated once on the same 492-record holdout fraud set · identical preprocessing · 31→51 features</span>
+  </div>
+</section>
+
+</body>
+</html>
